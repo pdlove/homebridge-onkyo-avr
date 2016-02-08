@@ -63,6 +63,9 @@ function HttpStatusAccessory(log, config)
 			that.getPowerState( function( error, response) {
 				done(error, response);
 			}, "statuspoll");
+			that.getVolume( function( error, response) {
+				done(error, response);
+			}, "statuspoll");
 		}, {longpolling:true,interval:that.interval * 1000,longpollEventName:"statuspoll"});
 
 		statusemitter.on("statuspoll", function(data) {
@@ -105,7 +108,8 @@ eventSystemPower: function( response)
 
 eventVolume: function( response)
 {
-	//this.log( "eventVolume: %s", response);
+	this.log('Volume changed to ' + response);
+    this.vol = response || 0;
 },
 
 eventClose: function( response)
@@ -170,6 +174,54 @@ getPowerState: function(callback, context) {
 
 },
 
+setVolume: function(volume, callback, context) {
+	var that = this;
+//if context is statuspoll, then we need to ensure that we do not set the actual value
+	if (context && context == "statuspoll") {
+		this.log( "setVolume -- Status poll context is set, ignore request.");
+		callback(null, volume);
+	    return;
+	}
+    if (!this.ip_address) {
+    	this.log.warn("Ignoring request; No ip_address defined.");
+	    callback(new Error("No ip_address defined."));
+	    return;
+    }
+
+    this.log("Setting volume to " + volume);
+	this.eiscp.command("volume=" + volume, function(error, response) {
+		this.log( "Volume changed to %s: %s - %s", volume, error, response);
+		this.vol = volume;
+		callback( error, volume);
+	}.bind(this) );
+},
+    
+getVolume: function(callback, context) {
+//if context is statuspoll, then we need to request the actual value
+	if (!context || context != "statuspoll") {
+		if (this.switchHandling == "poll") {
+			this.log("getVolume - polling mode, return state: ", this.state);
+			callback(null, this.state);
+			return;
+		}
+	}
+	
+    if (!this.ip_address) {
+    	this.log.warn("Ignoring request; No ip_address defined.");
+	    callback(new Error("No ip_address defined."));
+	    return;
+    }
+	
+    this.log("Getting power state");
+	var that = this;
+	
+	this.eiscp.command("volume=query", function( response, data) {
+		this.log( "VOL Q: %s - %s", response, data);
+		callback(null, this.vol);
+	}.bind(this) );
+
+},
+
 identify: function(callback) {
     this.log("Identify requested!");
     callback(); // success
@@ -190,7 +242,12 @@ getServices: function() {
 		.getCharacteristic(Characteristic.On)
 		.on('get', this.getPowerState.bind(this))
 		.on('set', this.setPowerState.bind(this));
-			
+	
+	this.switchService
+		.addCharacteristic(Characteristic.Brightness)
+		.on('get', this.getVolume.bind(this))
+		.on('set', this.setVolume.bind(this));
+	
 	return [informationService, this.switchService];
 }
 };
