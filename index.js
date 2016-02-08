@@ -1,13 +1,27 @@
+var inherits = require('util').inherits;
 var Service;
 var Characteristic;
 var request = require("request");
 var pollingtoevent = require('polling-to-event');
 var util = require('util');
-	
+var VolumeCharacteristic;
 module.exports = function(homebridge)
 {
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
+  VolumeCharacteristic = function() {
+    Characteristic.call(this, 'Volume', '91288267-5678-49B2-8D22-F57BE995AA93');
+    this.setProps({
+      format: Characteristic.Formats.INT,
+      unit: Characteristic.Units.PERCENTAGE,
+      maxValue: 100,
+      minValue: 0,
+      minStep: 1,
+      perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE, Characteristic.Perms.NOTIFY]
+    });
+    this.value = this.getDefaultValue();
+  };
+  inherits(VolumeCharacteristic, Characteristic);
   homebridge.registerAccessory("homebridge-onkyo-avr", "OnkyoAVR", HttpStatusAccessory);
 }
 
@@ -92,14 +106,14 @@ eventError: function( response)
 
 eventConnect: function( response)
 {
-	this.log( "eventConnect: %s", response);
+	this.log.debug( "eventConnect: %s", response);
 },
 
 eventSystemPower: function( response)
 {
 	//this.log( "eventSystemPower: %s", response);
 	this.state = (response == "on");
-	this.log("Event - Power message received: ", this.state);
+	this.log.debug("Event - Power message received: ", this.state);
 	//Communicate status
 	if (this.switchService ) {
 		this.switchService.getCharacteristic(Characteristic.On).setValue(this.state, null, "statuspoll");
@@ -108,20 +122,22 @@ eventSystemPower: function( response)
 
 eventVolume: function( response)
 {
-	this.log('Volume changed to ' + response);
+	this.log.debug('Volume changed to ' + response);
     this.vol = response || 0;
+	if ((this.vol>=0)&&(this.vol<=100))
+		this.switchService.getCharacteristic(VolumeCharacteristic).setValue(this.vol, null, "statuspoll");
 },
 
 eventClose: function( response)
 {
-	this.log( "eventClose: %s", response);
+	this.log.debug( "eventClose: %s", response);
 },
 
 setPowerState: function(powerOn, callback, context) {
 	var that = this;
 //if context is statuspoll, then we need to ensure that we do not set the actual value
 	if (context && context == "statuspoll") {
-		this.log( "setPowerState -- Status poll context is set, ignore request.");
+		this.log.debug( "setPowerState -- Status poll context is set, ignore request.");
 		callback(null, powerOn);
 	    return;
 	}
@@ -132,16 +148,16 @@ setPowerState: function(powerOn, callback, context) {
     }
 
     if (powerOn) {
-		this.log("Setting power state to ON");
+		this.log.debug("Setting power state to ON");
 		this.eiscp.command("system-power=on", function(error, response) {
-			this.log( "PWR ON: %s - %s", error, response);
+			this.log.debug( "PWR ON: %s - %s", error, response);
 			this.state = powerOn;
 			callback( error, powerOn);
 		}.bind(this) );
 	} else {
-		this.log("Setting power state to OFF");
+		this.log.debug("Setting power state to OFF");
 		this.eiscp.command("system-power=standby", function(error, response) {
-			this.log( "PWR OFF: %s - %s", error, response);
+			this.log.debug( "PWR OFF: %s - %s", error, response);
 			this.state = powerOn;
 			callback( error, powerOn);
 		}.bind(this) );		
@@ -152,7 +168,7 @@ getPowerState: function(callback, context) {
 //if context is statuspoll, then we need to request the actual value
 	if (!context || context != "statuspoll") {
 		if (this.switchHandling == "poll") {
-			this.log("getPowerState - polling mode, return state: ", this.state);
+			this.log.debug("getPowerState - polling mode, return state: ", this.state);
 			callback(null, this.state);
 			return;
 		}
@@ -164,11 +180,11 @@ getPowerState: function(callback, context) {
 	    return;
     }
 	
-    this.log("Getting power state");
+    this.log.debug("Getting power state");
 	var that = this;
 	
 	this.eiscp.command("system-power=query", function( response, data) {
-		this.log( "PWR Q: %s - %s", response, data);
+		this.log.debug( "PWR Q: %s - %s", response, data);
 		callback(null, this.state);
 	}.bind(this) );
 
@@ -178,7 +194,7 @@ setVolume: function(volume, callback, context) {
 	var that = this;
 //if context is statuspoll, then we need to ensure that we do not set the actual value
 	if (context && context == "statuspoll") {
-		this.log( "setVolume -- Status poll context is set, ignore request.");
+		this.log.debug( "setVolume -- Status poll context is set, ignore request.");
 		callback(null, volume);
 	    return;
 	}
@@ -188,9 +204,9 @@ setVolume: function(volume, callback, context) {
 	    return;
     }
 
-    this.log("Setting volume to " + volume);
+    this.log.debug("Setting volume to " + volume);
 	this.eiscp.command("volume=" + volume, function(error, response) {
-		this.log( "Volume changed to %s: %s - %s", volume, error, response);
+		this.log.debug( "Volume changed to %s: %s - %s", volume, error, response);
 		this.vol = volume;
 		callback( error, volume);
 	}.bind(this) );
@@ -200,7 +216,7 @@ getVolume: function(callback, context) {
 //if context is statuspoll, then we need to request the actual value
 	if (!context || context != "statuspoll") {
 		if (this.switchHandling == "poll") {
-			this.log("getVolume - polling mode, return state: ", this.state);
+			this.log.debug("getVolume - polling mode, return state: ", this.state);
 			callback(null, this.state);
 			return;
 		}
@@ -212,18 +228,18 @@ getVolume: function(callback, context) {
 	    return;
     }
 	
-    this.log("Getting power state");
+    this.log.debug("Getting power state");
 	var that = this;
 	
 	this.eiscp.command("volume=query", function( response, data) {
-		this.log( "VOL Q: %s - %s", response, data);
+		this.log.debug( "VOL Q: %s - %s", response, data);
 		callback(null, this.vol);
 	}.bind(this) );
 
 },
 
 identify: function(callback) {
-    this.log("Identify requested!");
+    this.log.debug("Identify requested!");
     callback(); // success
 },
 
@@ -244,7 +260,7 @@ getServices: function() {
 		.on('set', this.setPowerState.bind(this));
 	
 	this.switchService
-		.addCharacteristic(Characteristic.Brightness)
+		.addCharacteristic(VolumeCharacteristic)
 		.on('get', this.getVolume.bind(this))
 		.on('set', this.setVolume.bind(this));
 	
