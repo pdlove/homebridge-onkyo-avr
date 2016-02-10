@@ -101,7 +101,7 @@ eventDebug: function( response)
 
 eventError: function( response)
 {
-	this.log( "eventError: %s", error, response);
+	this.log( "eventError: %s", response);
 },
 
 eventConnect: function( response)
